@@ -41,11 +41,11 @@ class TestQualityEngine:
         discovery = ConfigDiscovery()
         return discovery.discover()
 
-    def test_backend_row_count(self, backend):
+    def test_backend_row_count(self, backend, fixtures):
         """Test backend returns correct row counts"""
-        assert backend.get_row_count("organisations") == 3
-        assert backend.get_row_count("advisors") == 6
-        assert backend.get_row_count("accounts") == 9
+        assert backend.get_row_count("organisations") == len(fixtures.organisations)
+        assert backend.get_row_count("advisors") == len(fixtures.advisors)
+        assert backend.get_row_count("accounts") == len(fixtures.accounts)
 
     def test_backend_count_null_values(self, backend):
         """Test backend counts NULL values correctly"""

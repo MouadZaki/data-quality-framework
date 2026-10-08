@@ -4,9 +4,11 @@ Generates 10 normalized tables with 3 fake organisations and 3 planted bugs.
 """
 
 import random
-from dataclasses import dataclass, field
+import csv
+from dataclasses import dataclass, field, asdict
 from typing import Dict, List
 from datetime import datetime, timedelta
+from pathlib import Path
 
 
 @dataclass
@@ -207,11 +209,11 @@ class FixtureGenerator:
                 self.fixtures.advisors.append(advisor)
 
     def _generate_accounts(self) -> None:
-        """Generate accounts for each organisation"""
+        """Generate accounts for each organisation (25 per org)"""
         account_types = ["Brokerage", "IRA", "401k"]
         for org_id in self.org_ids:
             org_advisors = [a for a in self.fixtures.advisors if a.organisation_id == org_id]
-            for i in range(3):
+            for i in range(25):
                 advisor = random.choice(org_advisors)
                 account = Account(
                     id=f"acc_{org_id}_{i+1}",
@@ -252,13 +254,16 @@ class FixtureGenerator:
                 self.fixtures.portfolios.append(portfolio)
 
     def _generate_holdings(self) -> None:
-        """Generate holdings for each portfolio"""
+        """Generate holdings for each portfolio (multiple per portfolio)"""
         for org_id in self.org_ids:
             org_portfolios = [p for p in self.fixtures.portfolios if p.organisation_id == org_id]
             for portfolio in org_portfolios:
-                for security in self.fixtures.securities[:3]:
+                # Generate 5-8 holdings per portfolio
+                num_holdings = random.randint(5, 8)
+                for i in range(num_holdings):
+                    security = random.choice(self.fixtures.securities)
                     holding = Holding(
-                        id=f"hld_{portfolio.id}_{security.id}",
+                        id=f"hld_{portfolio.id}_{security.id}_{i}",
                         organisation_id=org_id,
                         portfolio_id=portfolio.id,
                         security_id=security.id,
@@ -268,12 +273,12 @@ class FixtureGenerator:
                     self.fixtures.holdings.append(holding)
 
     def _generate_transactions(self) -> None:
-        """Generate transactions for each account"""
+        """Generate transactions for each account (10 per account)"""
         transaction_types = ["Deposit", "Withdrawal", "Transfer"]
         for org_id in self.org_ids:
             org_accounts = [a for a in self.fixtures.accounts if a.organisation_id == org_id]
             for account in org_accounts:
-                for i in range(2):
+                for i in range(10):
                     transaction = Transaction(
                         id=f"txn_{account.id}_{i+1}",
                         organisation_id=org_id,
@@ -285,11 +290,11 @@ class FixtureGenerator:
                     self.fixtures.transactions.append(transaction)
 
     def _generate_trades(self) -> None:
-        """Generate trades for each account"""
+        """Generate trades for each account (8 per account)"""
         for org_id in self.org_ids:
             org_accounts = [a for a in self.fixtures.accounts if a.organisation_id == org_id]
             for account in org_accounts:
-                for i in range(2):
+                for i in range(8):
                     security = random.choice(self.fixtures.securities)
                     trade = Trade(
                         id=f"trd_{account.id}_{i+1}",
@@ -345,6 +350,46 @@ class FixtureGenerator:
                 org1_holdings[0].portfolio_id = org2_portfolios[0].id
                 print(f"[BUG #3] Planted cross-tenant leak: holding {org1_holdings[0].id} in org {self.org_ids[0]} references portfolio {org2_portfolios[0].id} from org {self.org_ids[1]}")
 
+    def _write_csv(self, table_name: str, data: List) -> None:
+        """Write table data to CSV file"""
+        output_dir = Path("fixtures/output")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        output_file = output_dir / f"{table_name}.csv"
+        
+        if not data:
+            return
+        
+        # Get field names from first item
+        fieldnames = list(asdict(data[0]).keys())
+        
+        with open(output_file, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            
+            for item in data:
+                row_dict = asdict(item)
+                # Convert None to empty string for NULL values
+                row_dict = {k: '' if v is None else v for k, v in row_dict.items()}
+                writer.writerow(row_dict)
+        
+        print(f"Wrote {len(data)} rows to {output_file}")
+
+    def write_csv_files(self) -> None:
+        """Write all tables to CSV files"""
+        print("\nWriting CSV files to fixtures/output/...")
+        self._write_csv("organisations", self.fixtures.organisations)
+        self._write_csv("advisors", self.fixtures.advisors)
+        self._write_csv("accounts", self.fixtures.accounts)
+        self._write_csv("contacts", self.fixtures.contacts)
+        self._write_csv("securities", self.fixtures.securities)
+        self._write_csv("portfolios", self.fixtures.portfolios)
+        self._write_csv("holdings", self.fixtures.holdings)
+        self._write_csv("transactions", self.fixtures.transactions)
+        self._write_csv("trades", self.fixtures.trades)
+        self._write_csv("fee_schedules", self.fixtures.fee_schedules)
+        print("CSV files written complete.\n")
+
 
 def main():
     """Main entry point"""
@@ -352,6 +397,7 @@ def main():
     generator = FixtureGenerator()
     fixtures = generator.generate()
     fixtures.print_counts()
+    generator.write_csv_files()
     print("Fixture generation complete.")
     print("\nBugs have been planted. See fixtures/PLANTED_BUGS.md for details.")
 
