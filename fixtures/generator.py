@@ -207,11 +207,11 @@ class FixtureGenerator:
                 self.fixtures.advisors.append(advisor)
 
     def _generate_accounts(self) -> None:
-        """Generate accounts for each organisation"""
+        """Generate accounts for each organisation (25 per org)"""
         account_types = ["Brokerage", "IRA", "401k"]
         for org_id in self.org_ids:
             org_advisors = [a for a in self.fixtures.advisors if a.organisation_id == org_id]
-            for i in range(3):
+            for i in range(25):
                 advisor = random.choice(org_advisors)
                 account = Account(
                     id=f"acc_{org_id}_{i+1}",
@@ -252,13 +252,16 @@ class FixtureGenerator:
                 self.fixtures.portfolios.append(portfolio)
 
     def _generate_holdings(self) -> None:
-        """Generate holdings for each portfolio"""
+        """Generate holdings for each portfolio (multiple per portfolio)"""
         for org_id in self.org_ids:
             org_portfolios = [p for p in self.fixtures.portfolios if p.organisation_id == org_id]
             for portfolio in org_portfolios:
-                for security in self.fixtures.securities[:3]:
+                # Generate 5-8 holdings per portfolio
+                num_holdings = random.randint(5, 8)
+                for i in range(num_holdings):
+                    security = random.choice(self.fixtures.securities)
                     holding = Holding(
-                        id=f"hld_{portfolio.id}_{security.id}",
+                        id=f"hld_{portfolio.id}_{security.id}_{i}",
                         organisation_id=org_id,
                         portfolio_id=portfolio.id,
                         security_id=security.id,
@@ -268,12 +271,12 @@ class FixtureGenerator:
                     self.fixtures.holdings.append(holding)
 
     def _generate_transactions(self) -> None:
-        """Generate transactions for each account"""
+        """Generate transactions for each account (10 per account)"""
         transaction_types = ["Deposit", "Withdrawal", "Transfer"]
         for org_id in self.org_ids:
             org_accounts = [a for a in self.fixtures.accounts if a.organisation_id == org_id]
             for account in org_accounts:
-                for i in range(2):
+                for i in range(10):
                     transaction = Transaction(
                         id=f"txn_{account.id}_{i+1}",
                         organisation_id=org_id,
@@ -285,11 +288,11 @@ class FixtureGenerator:
                     self.fixtures.transactions.append(transaction)
 
     def _generate_trades(self) -> None:
-        """Generate trades for each account"""
+        """Generate trades for each account (8 per account)"""
         for org_id in self.org_ids:
             org_accounts = [a for a in self.fixtures.accounts if a.organisation_id == org_id]
             for account in org_accounts:
-                for i in range(2):
+                for i in range(8):
                     security = random.choice(self.fixtures.securities)
                     trade = Trade(
                         id=f"trd_{account.id}_{i+1}",
