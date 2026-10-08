@@ -1,0 +1,22 @@
+table_name: accounts
+description: Account entities
+tenant_column: organisation_id
+is_shared_reference: false
+checks:
+  - name: account_org_id_not_null
+    type: null_check
+    config:
+      column: organisation_id
+      severity: ERROR
+    description: Ensure all accounts have an organisation_id
+    enabled: true
+  - name: account_number_unique_per_org
+    type: unique_key
+    config:
+      columns:
+        - account_number
+      group_by:
+        - organisation_id
+      severity: ERROR
+    description: Account numbers must be unique within each organisation
+    enabled: true

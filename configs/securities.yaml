@@ -1,0 +1,13 @@
+table_name: securities
+description: Security reference data (shared across all organisations)
+tenant_column: null
+is_shared_reference: true
+checks:
+  - name: security_symbol_unique
+    type: unique_key
+    config:
+      columns:
+        - symbol
+      severity: ERROR
+    description: Security symbols must be globally unique
+    enabled: true

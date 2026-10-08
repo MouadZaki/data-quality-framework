@@ -1,0 +1,19 @@
+# Data Quality Framework Requirements
+# Python 3.11+
+
+# YAML parsing
+pyyaml>=6.0
+
+# Type checking
+pydantic>=2.0
+
+# Testing
+pytest>=7.4
+pytest-cov>=4.1
+
+# ClickHouse backend (for Phase 4)
+clickhouse-connect>=0.6.0
+
+# Development
+black>=23.0
+mypy>=1.5

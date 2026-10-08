@@ -1,0 +1,21 @@
+table_name: holdings
+description: Holding entities
+tenant_column: organisation_id
+is_shared_reference: false
+checks:
+  - name: holding_org_id_not_null
+    type: null_check
+    config:
+      column: organisation_id
+      severity: ERROR
+    description: Ensure all holdings have an organisation_id
+    enabled: true
+  - name: holding_portfolio_cross_tenant
+    type: cross_tenant_check
+    config:
+      column: portfolio_id
+      referenced_table: portfolios
+      referenced_column: id
+      severity: ERROR
+    description: Ensure holdings reference portfolios within the same organisation
+    enabled: true

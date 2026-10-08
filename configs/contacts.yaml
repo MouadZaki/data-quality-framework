@@ -1,0 +1,12 @@
+table_name: contacts
+description: Contact entities
+tenant_column: organisation_id
+is_shared_reference: false
+checks:
+  - name: contact_org_id_not_null
+    type: null_check
+    config:
+      column: organisation_id
+      severity: ERROR
+    description: Ensure all contacts have an organisation_id
+    enabled: true

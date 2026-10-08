@@ -1,0 +1,21 @@
+table_name: fee_schedules
+description: Fee schedule entities
+tenant_column: organisation_id
+is_shared_reference: false
+checks:
+  - name: fee_schedule_org_id_not_null
+    type: null_check
+    config:
+      column: organisation_id
+      severity: ERROR
+    description: Ensure all fee schedules have an organisation_id
+    enabled: true
+  - name: fee_rate_range
+    type: range_check
+    config:
+      column: rate
+      min_value: 0
+      max_value: 0.1
+      severity: WARNING
+    description: Fee rates should be between 0% and 10%
+    enabled: true

@@ -1,0 +1,21 @@
+table_name: transactions
+description: Transaction entities
+tenant_column: organisation_id
+is_shared_reference: false
+checks:
+  - name: transaction_org_id_not_null
+    type: null_check
+    config:
+      column: organisation_id
+      severity: ERROR
+    description: Ensure all transactions have an organisation_id
+    enabled: true
+  - name: transaction_amount_range
+    type: range_check
+    config:
+      column: amount
+      min_value: 0
+      max_value: 1000000
+      severity: WARNING
+    description: Transaction amounts should be within reasonable range
+    enabled: true

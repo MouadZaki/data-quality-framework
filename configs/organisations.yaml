@@ -1,0 +1,11 @@
+table_name: organisations
+description: Organisation entities
+tenant_column: null
+is_shared_reference: true
+checks:
+  - name: org_row_count
+    type: row_count_reconciliation
+    config:
+      expected_count: 3
+    description: Verify exactly 3 organisations exist
+    enabled: true
