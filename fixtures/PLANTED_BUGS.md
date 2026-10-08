@@ -25,7 +25,7 @@ This document describes the 3 intentionally planted bugs in the fixture data for
 ## Bug #3: Cross-Tenant Leak
 
 **Table**: `holdings`  
-**Key**: A holding in `org_001` references a portfolio owned by `org_002`  
+**Key**: Holding `hld_prt_acc_org_001_1_sec_006_0` in `org_001` references portfolio `prt_acc_org_002_1` owned by `org_002`  
 **Reason**: A holding record belongs to one organisation but its `portfolio_id` references a portfolio from a different organisation, creating a cross-tenant data leak that violates isolation boundaries.
 
 **Expected detection**: `cross_tenant_check` on `holdings.portfolio_id` referencing `portfolios.id` with severity ERROR.
