@@ -4,9 +4,11 @@ Generates 10 normalized tables with 3 fake organisations and 3 planted bugs.
 """
 
 import random
-from dataclasses import dataclass, field
+import csv
+from dataclasses import dataclass, field, asdict
 from typing import Dict, List
 from datetime import datetime, timedelta
+from pathlib import Path
 
 
 @dataclass
@@ -348,6 +350,46 @@ class FixtureGenerator:
                 org1_holdings[0].portfolio_id = org2_portfolios[0].id
                 print(f"[BUG #3] Planted cross-tenant leak: holding {org1_holdings[0].id} in org {self.org_ids[0]} references portfolio {org2_portfolios[0].id} from org {self.org_ids[1]}")
 
+    def _write_csv(self, table_name: str, data: List) -> None:
+        """Write table data to CSV file"""
+        output_dir = Path("fixtures/output")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        output_file = output_dir / f"{table_name}.csv"
+        
+        if not data:
+            return
+        
+        # Get field names from first item
+        fieldnames = list(asdict(data[0]).keys())
+        
+        with open(output_file, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            
+            for item in data:
+                row_dict = asdict(item)
+                # Convert None to empty string for NULL values
+                row_dict = {k: '' if v is None else v for k, v in row_dict.items()}
+                writer.writerow(row_dict)
+        
+        print(f"Wrote {len(data)} rows to {output_file}")
+
+    def write_csv_files(self) -> None:
+        """Write all tables to CSV files"""
+        print("\nWriting CSV files to fixtures/output/...")
+        self._write_csv("organisations", self.fixtures.organisations)
+        self._write_csv("advisors", self.fixtures.advisors)
+        self._write_csv("accounts", self.fixtures.accounts)
+        self._write_csv("contacts", self.fixtures.contacts)
+        self._write_csv("securities", self.fixtures.securities)
+        self._write_csv("portfolios", self.fixtures.portfolios)
+        self._write_csv("holdings", self.fixtures.holdings)
+        self._write_csv("transactions", self.fixtures.transactions)
+        self._write_csv("trades", self.fixtures.trades)
+        self._write_csv("fee_schedules", self.fixtures.fee_schedules)
+        print("CSV files written complete.\n")
+
 
 def main():
     """Main entry point"""
@@ -355,6 +397,7 @@ def main():
     generator = FixtureGenerator()
     fixtures = generator.generate()
     fixtures.print_counts()
+    generator.write_csv_files()
     print("Fixture generation complete.")
     print("\nBugs have been planted. See fixtures/PLANTED_BUGS.md for details.")
 
