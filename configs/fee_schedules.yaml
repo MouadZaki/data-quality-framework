@@ -3,6 +3,16 @@ description: Fee schedule entities
 tenant_column: organisation_id
 is_shared_reference: false
 checks:
+  - name: fee_schedule_id_unique_per_org
+    type: unique_key
+    config:
+      columns:
+        - id
+      group_by:
+        - organisation_id
+      severity: ERROR
+    description: Fee schedule IDs must be unique within each organisation
+    enabled: true
   - name: fee_schedule_org_id_not_null
     type: null_check
     config:

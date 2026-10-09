@@ -1,3 +1,5 @@
+# Organisations table defines the tenants themselves, so it has no tenant_column.
+# This is the root table in the multi-tenancy hierarchy.
 table_name: organisations
 description: Organisation entities
 tenant_column: null
