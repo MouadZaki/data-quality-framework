@@ -76,6 +76,12 @@ pytest tests/ --cov=dq --cov-report=html
 5. **One phase at a time** - Complete each phase before moving to the next
 6. **Git workflow** - One branch per phase, small clear commits, PRs to main
 
+## Important Notes
+
+### Cross-Tenant Checks and NULL Values
+
+Cross-tenant checks compare the `organisation_id` of the referencing row with the `organisation_id` of the referenced row to detect data crossing tenant boundaries. If the referencing row has a NULL `organisation_id`, the cross-tenant check cannot perform the comparison and does not count it as a cross-tenant violation. Instead, NULL `organisation_id` values are caught by separate `null_check` configurations. This ensures that the "exactly 3 violations" in the fixture data (1 NULL org_id, 1 duplicate key, 1 cross-tenant reference) are unambiguous and each violation type is detected by its appropriate check.
+
 ## License
 
 MIT
