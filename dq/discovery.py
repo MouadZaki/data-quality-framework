@@ -2,15 +2,11 @@
 Discovery module walks configs/ and builds executable test objects from YAML declarations.
 """
 
-import sys
 from pathlib import Path
-
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import yaml
 from typing import List, Dict
-from dq.schema import TableConfig, Check
+from dq.schema import TableConfig, Check, CheckType
 
 
 class DiscoveryError(Exception):
@@ -26,11 +22,14 @@ class ConfigDiscovery:
         Initialize discovery with configs directory path
         
         Args:
-            configs_dir: Path to directory containing YAML config files
+            configs_dir: Path to directory containing YAML config files (relative to project root)
         """
-        self.configs_dir = Path(configs_dir)
+        # Resolve configs directory relative to this file's location (project root)
+        project_root = Path(__file__).parent.parent
+        self.configs_dir = project_root / configs_dir
+        
         if not self.configs_dir.exists():
-            raise DiscoveryError(f"Configs directory not found: {configs_dir}")
+            raise DiscoveryError(f"Configs directory not found: {self.configs_dir}")
 
     def discover(self) -> List[TableConfig]:
         """
@@ -40,9 +39,10 @@ class ConfigDiscovery:
             List of TableConfig objects parsed from YAML files
         """
         table_configs = []
+        seen_table_names = set()
         
-        # Find all .yaml files in configs directory
-        yaml_files = list(self.configs_dir.glob("*.yaml"))
+        # Find all .yaml files in configs directory and sort for stable order
+        yaml_files = sorted(self.configs_dir.glob("*.yaml"))
         
         if not yaml_files:
             raise DiscoveryError(f"No YAML files found in {self.configs_dir}")
@@ -50,9 +50,20 @@ class ConfigDiscovery:
         for yaml_file in yaml_files:
             try:
                 table_config = self._load_yaml_file(yaml_file)
+                
+                # Check for duplicate table names
+                if table_config.table_name in seen_table_names:
+                    raise DiscoveryError(
+                        f"Duplicate table_name '{table_config.table_name}' found in {yaml_file.name}. "
+                        f"Table names must be unique across all config files."
+                    )
+                seen_table_names.add(table_config.table_name)
+                
                 table_configs.append(table_config)
+            except DiscoveryError:
+                raise
             except Exception as e:
-                raise DiscoveryError(f"Failed to load {yaml_file}: {e}")
+                raise DiscoveryError(f"Failed to load {yaml_file}: {e}") from e
         
         return table_configs
 
@@ -66,11 +77,43 @@ class ConfigDiscovery:
         Returns:
             TableConfig object
         """
-        with open(yaml_path, 'r') as f:
+        with open(yaml_path, 'r', encoding='utf-8') as f:
             yaml_data = yaml.safe_load(f)
         
+        # Check for empty YAML file
+        if yaml_data is None:
+            raise DiscoveryError(
+                f"Empty YAML file: {yaml_path.name}. "
+                f"YAML files must contain a valid table configuration."
+            )
+        
         # Validate and parse using Pydantic model
-        table_config = TableConfig(**yaml_data)
+        try:
+            table_config = TableConfig(**yaml_data)
+        except Exception as e:
+            raise DiscoveryError(
+                f"Invalid table configuration in {yaml_path.name}: {e}"
+            ) from e
+        
+        # Check for duplicate check names within this table
+        check_names = [check.name for check in table_config.checks]
+        if len(check_names) != len(set(check_names)):
+            duplicates = [name for name in check_names if check_names.count(name) > 1]
+            raise DiscoveryError(
+                f"Duplicate check name(s) in {yaml_path.name}: {set(duplicates)}. "
+                f"Check names must be unique within a table configuration."
+            )
+        
+        # Validate check types
+        for check in table_config.checks:
+            try:
+                CheckType(check.type)
+            except ValueError:
+                valid_types = [t.value for t in CheckType]
+                raise DiscoveryError(
+                    f"Invalid check type '{check.type}' in check '{check.name}' in {yaml_path.name}. "
+                    f"Valid types are: {', '.join(valid_types)}"
+                ) from None
         
         return table_config
 
