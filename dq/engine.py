@@ -3,13 +3,9 @@ Data quality engine with database interface and check execution.
 Enforces counts-only rule and ERROR vs WARNING handling.
 """
 
-import sys
-from pathlib import Path
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dq.schema import TableConfig, Check, CheckType, Severity
 
@@ -163,7 +159,7 @@ class QualityEngine:
             elif check_type == CheckType.UNIQUE_KEY:
                 return self._execute_unique_key_check(table_config.table_name, check)
             elif check_type == CheckType.CROSS_TENANT_CHECK:
-                return self._execute_cross_tenant_check(table_config.table_name, check)
+                return self._execute_cross_tenant_check(table_config.table_name, check, table_config)
             elif check_type == CheckType.ROW_COUNT_RECONCILIATION:
                 return self._execute_row_count_check(table_config.table_name, check)
             elif check_type == CheckType.RANGE_CHECK:
@@ -178,13 +174,15 @@ class QualityEngine:
                     message=f"Unknown check type: {check_type}"
                 )
         except Exception as e:
+            # Only include exception type name, not message, to prevent leaking query text or data
+            # Execution failures are treated as ERROR severity to halt the pipeline on unexpected issues
             return CheckResult(
                 check_name=check.name,
                 table_name=table_config.table_name,
                 passed=False,
                 violation_count=0,
                 severity=Severity.ERROR,
-                message=f"Check execution failed: {str(e)}"
+                message=f"Check execution failed: {type(e).__name__}"
             )
 
     def _execute_null_check(self, table_name: str, check: Check) -> CheckResult:
@@ -222,13 +220,13 @@ class QualityEngine:
             message=f"Unique key check on {columns}: {violation_count} violations"
         )
 
-    def _execute_cross_tenant_check(self, table_name: str, check: Check) -> CheckResult:
+    def _execute_cross_tenant_check(self, table_name: str, check: Check, table_config: TableConfig) -> CheckResult:
         """Execute cross_tenant_check - counts only, no raw rows"""
         column = check.config["column"]
         referenced_table = check.config["referenced_table"]
         referenced_column = check.config["referenced_column"]
         severity = Severity(check.config.get("severity", "ERROR"))
-        tenant_column = "organisation_id"  # Hardcoded per project spec
+        tenant_column = table_config.tenant_column  # Use table's tenant column
         
         violation_count = self.backend.count_cross_tenant_violations(
             table_name, column, referenced_table, referenced_column, tenant_column
@@ -295,7 +293,7 @@ class QualityEngine:
         
         for check_result in result.check_results:
             status = "✓ PASS" if check_result.passed else "✗ FAIL"
-            severity = f"[{check_result.severity}]"
+            severity = f"[{check_result.severity.value}]"
             print(f"{status} {severity} {check_result.table_name}.{check_result.check_name}")
             print(f"      {check_result.message}")
         
