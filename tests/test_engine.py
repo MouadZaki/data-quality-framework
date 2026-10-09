@@ -111,14 +111,14 @@ class TestQualityEngine:
         """Test engine detects Bug #2: Duplicate business key"""
         result = engine.run_checks(table_configs)
         
-        # Find the account unique key check result
+        # Find the account_number unique key check result (not the id check)
         account_unique_result = None
         for check_result in result.check_results:
-            if check_result.table_name == "accounts" and "unique" in check_result.check_name.lower():
+            if check_result.table_name == "accounts" and "account_number" in check_result.check_name.lower():
                 account_unique_result = check_result
                 break
         
-        assert account_unique_result is not None, "Should have account unique key check"
+        assert account_unique_result is not None, "Should have account_number unique key check"
         assert not account_unique_result.passed, "Account unique key check should fail"
         assert account_unique_result.violation_count == 1, "Should detect 1 violation"
 
