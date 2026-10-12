@@ -145,10 +145,11 @@ class Fixtures:
 class FixtureGenerator:
     """Generates fixture data with planted bugs"""
 
-    def __init__(self, seed: int = 42):
+    def __init__(self, seed: int = 42, verbose: bool = True):
         random.seed(seed)
         self.fixtures = Fixtures()
         self.org_ids: List[str] = []
+        self.verbose = verbose
 
     def generate(self) -> Fixtures:
         """Generate all fixture data"""
@@ -327,7 +328,8 @@ class FixtureGenerator:
         # We'll set organisation_id to None for one contact
         if self.fixtures.contacts:
             self.fixtures.contacts[0].organisation_id = None
-            print(f"[BUG #1] Planted NULL organisation_id in contact: {self.fixtures.contacts[0].id}")
+            if self.verbose:
+                print(f"[BUG #1] Planted NULL organisation_id in contact: {self.fixtures.contacts[0].id}")
 
         # Bug #2: Duplicate business key within an organisation
         # We'll duplicate an account_number within the same organisation
@@ -337,7 +339,8 @@ class FixtureGenerator:
             if len(org_accounts) >= 2:
                 # Duplicate the account_number from the first to the second
                 org_accounts[1].account_number = org_accounts[0].account_number
-                print(f"[BUG #2] Planted duplicate account_number '{org_accounts[0].account_number}' in org {self.org_ids[0]}")
+                if self.verbose:
+                    print(f"[BUG #2] Planted duplicate account_number '{org_accounts[0].account_number}' in org {self.org_ids[0]}")
 
         # Bug #3: Cross-tenant leak
         # A holding in org A referencing a portfolio owned by org B
@@ -348,7 +351,8 @@ class FixtureGenerator:
             if org1_holdings and org2_portfolios:
                 # Make the holding reference the portfolio from a different org
                 org1_holdings[0].portfolio_id = org2_portfolios[0].id
-                print(f"[BUG #3] Planted cross-tenant leak: holding {org1_holdings[0].id} in org {self.org_ids[0]} references portfolio {org2_portfolios[0].id} from org {self.org_ids[1]}")
+                if self.verbose:
+                    print(f"[BUG #3] Planted cross-tenant leak: holding {org1_holdings[0].id} in org {self.org_ids[0]} references portfolio {org2_portfolios[0].id} from org {self.org_ids[1]}")
 
     def _write_csv(self, table_name: str, data: List) -> None:
         """Write table data to CSV file"""
