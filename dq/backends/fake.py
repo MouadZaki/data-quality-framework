@@ -3,14 +3,16 @@ Fake in-memory database backend for unit testing.
 Uses fixture data without requiring a database connection.
 """
 
-import sys
-from pathlib import Path
 from typing import Dict, List, Any, Optional
 from collections import defaultdict
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from dataclasses import asdict
 
 from dq.engine import DatabaseBackend
+
+
+class BackendError(Exception):
+    """Raised when backend operation fails"""
+    pass
 
 
 class FakeBackend(DatabaseBackend):
@@ -26,120 +28,55 @@ class FakeBackend(DatabaseBackend):
         self.data = self._convert_fixtures_to_dict(fixtures)
 
     def _convert_fixtures_to_dict(self, fixtures) -> Dict[str, List[Dict]]:
-        """Convert fixture dataclasses to dictionary format for querying"""
+        """Convert fixture dataclasses to dictionary format for querying using asdict"""
         data = {
-            "organisations": [],
-            "advisors": [],
-            "accounts": [],
-            "contacts": [],
-            "securities": [],
-            "portfolios": [],
-            "holdings": [],
-            "transactions": [],
-            "trades": [],
-            "fee_schedules": []
+            "organisations": [asdict(org) for org in fixtures.organisations],
+            "advisors": [asdict(advisor) for advisor in fixtures.advisors],
+            "accounts": [asdict(account) for account in fixtures.accounts],
+            "contacts": [asdict(contact) for contact in fixtures.contacts],
+            "securities": [asdict(security) for security in fixtures.securities],
+            "portfolios": [asdict(portfolio) for portfolio in fixtures.portfolios],
+            "holdings": [asdict(holding) for holding in fixtures.holdings],
+            "transactions": [asdict(transaction) for transaction in fixtures.transactions],
+            "trades": [asdict(trade) for trade in fixtures.trades],
+            "fee_schedules": [asdict(fee_schedule) for fee_schedule in fixtures.fee_schedules]
         }
-        
-        for org in fixtures.organisations:
-            data["organisations"].append({
-                "id": org.id,
-                "name": org.name,
-                "created_at": org.created_at
-            })
-        
-        for advisor in fixtures.advisors:
-            data["advisors"].append({
-                "id": advisor.id,
-                "organisation_id": advisor.organisation_id,
-                "name": advisor.name,
-                "email": advisor.email
-            })
-        
-        for account in fixtures.accounts:
-            data["accounts"].append({
-                "id": account.id,
-                "organisation_id": account.organisation_id,
-                "advisor_id": account.advisor_id,
-                "account_number": account.account_number,
-                "account_type": account.account_type,
-                "balance": account.balance
-            })
-        
-        for contact in fixtures.contacts:
-            data["contacts"].append({
-                "id": contact.id,
-                "organisation_id": contact.organisation_id,
-                "account_id": contact.account_id,
-                "name": contact.name,
-                "email": contact.email,
-                "phone": contact.phone
-            })
-        
-        for security in fixtures.securities:
-            data["securities"].append({
-                "id": security.id,
-                "symbol": security.symbol,
-                "name": security.name,
-                "asset_class": security.asset_class
-            })
-        
-        for portfolio in fixtures.portfolios:
-            data["portfolios"].append({
-                "id": portfolio.id,
-                "organisation_id": portfolio.organisation_id,
-                "account_id": portfolio.account_id,
-                "name": portfolio.name
-            })
-        
-        for holding in fixtures.holdings:
-            data["holdings"].append({
-                "id": holding.id,
-                "organisation_id": holding.organisation_id,
-                "portfolio_id": holding.portfolio_id,
-                "security_id": holding.security_id,
-                "quantity": holding.quantity,
-                "avg_cost": holding.avg_cost
-            })
-        
-        for transaction in fixtures.transactions:
-            data["transactions"].append({
-                "id": transaction.id,
-                "organisation_id": transaction.organisation_id,
-                "account_id": transaction.account_id,
-                "transaction_type": transaction.transaction_type,
-                "amount": transaction.amount,
-                "transaction_date": transaction.transaction_date
-            })
-        
-        for trade in fixtures.trades:
-            data["trades"].append({
-                "id": trade.id,
-                "organisation_id": trade.organisation_id,
-                "account_id": trade.account_id,
-                "security_id": trade.security_id,
-                "quantity": trade.quantity,
-                "price": trade.price,
-                "trade_date": trade.trade_date
-            })
-        
-        for fee_schedule in fixtures.fee_schedules:
-            data["fee_schedules"].append({
-                "id": fee_schedule.id,
-                "organisation_id": fee_schedule.organisation_id,
-                "fee_type": fee_schedule.fee_type,
-                "rate": fee_schedule.rate,
-                "min_fee": fee_schedule.min_fee
-            })
-        
         return data
 
     def get_row_count(self, table_name: str) -> int:
-        """Get total row count for a table"""
-        return len(self.data.get(table_name, []))
+        """
+        Get total row count for a table.
+        
+        Args:
+            table_name: Name of the table
+            
+        Returns:
+            Total number of rows in the table
+            
+        Raises:
+            BackendError: If table does not exist
+        """
+        if table_name not in self.data:
+            raise BackendError(f"Unknown table: {table_name}")
+        return len(self.data[table_name])
 
     def count_null_values(self, table_name: str, column: str) -> int:
-        """Count NULL values in a column"""
-        table_data = self.data.get(table_name, [])
+        """
+        Count NULL values in a column.
+        
+        Args:
+            table_name: Name of the table
+            column: Column name to check for NULL values
+            
+        Returns:
+            Count of NULL values in the column
+            
+        Raises:
+            BackendError: If table does not exist
+        """
+        if table_name not in self.data:
+            raise BackendError(f"Unknown table: {table_name}")
+        table_data = self.data[table_name]
         null_count = 0
         for row in table_data:
             if row.get(column) is None:
@@ -152,8 +89,27 @@ class FakeBackend(DatabaseBackend):
         columns: List[str],
         group_by: Optional[List[str]] = None
     ) -> int:
-        """Count duplicate key violations"""
-        table_data = self.data.get(table_name, [])
+        """
+        Count duplicate key violations.
+        
+        A duplicate key violation occurs when the same key value appears more than once.
+        If group_by is specified, counts duplicates within each group separately.
+        The count returned is the total number of duplicate occurrences (count - 1 for each duplicate key).
+        
+        Args:
+            table_name: Name of the table
+            columns: List of column names that form the key
+            group_by: Optional list of columns to group by before checking duplicates
+            
+        Returns:
+            Total count of duplicate key violations
+            
+        Raises:
+            BackendError: If table does not exist
+        """
+        if table_name not in self.data:
+            raise BackendError(f"Unknown table: {table_name}")
+        table_data = self.data[table_name]
         
         if group_by:
             # Count duplicates within each group
@@ -189,9 +145,33 @@ class FakeBackend(DatabaseBackend):
         referenced_column: str,
         tenant_column: str
     ) -> int:
-        """Count cross-tenant reference violations"""
-        table_data = self.data.get(table_name, [])
-        ref_data = self.data.get(referenced_table, [])
+        """
+        Count cross-tenant reference violations.
+        
+        A cross-tenant violation occurs when a row in table_name references a row in
+        referenced_table via column/referenced_column, but the two rows have different
+        tenant_column values. Rows with NULL tenant_column or NULL reference are not counted.
+        
+        Args:
+            table_name: Name of the table containing the reference
+            column: Column in table_name that references the other table
+            referenced_table: Name of the table being referenced
+            referenced_column: Column in referenced_table that is referenced
+            tenant_column: Column name containing the tenant identifier
+            
+        Returns:
+            Count of cross-tenant reference violations
+            
+        Raises:
+            BackendError: If table does not exist
+        """
+        if table_name not in self.data:
+            raise BackendError(f"Unknown table: {table_name}")
+        if referenced_table not in self.data:
+            raise BackendError(f"Unknown referenced table: {referenced_table}")
+        
+        table_data = self.data[table_name]
+        ref_data = self.data[referenced_table]
         
         # Build map: referenced_column -> tenant_column
         ref_tenant_map = {}
@@ -221,8 +201,27 @@ class FakeBackend(DatabaseBackend):
         min_value: Optional[float] = None,
         max_value: Optional[float] = None
     ) -> int:
-        """Count values outside specified range"""
-        table_data = self.data.get(table_name, [])
+        """
+        Count values outside specified range.
+        
+        A range violation occurs when a value is less than min_value or greater than max_value.
+        NULL values are not counted as violations.
+        
+        Args:
+            table_name: Name of the table
+            column: Column name to check
+            min_value: Minimum allowed value (inclusive), None means no lower bound
+            max_value: Maximum allowed value (inclusive), None means no upper bound
+            
+        Returns:
+            Count of values outside the specified range
+            
+        Raises:
+            BackendError: If table does not exist
+        """
+        if table_name not in self.data:
+            raise BackendError(f"Unknown table: {table_name}")
+        table_data = self.data[table_name]
         violation_count = 0
         
         for row in table_data:
