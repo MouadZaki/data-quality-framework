@@ -11,9 +11,9 @@ from fixtures.generator import FixtureGenerator
 
 
 def main():
-    """Main entry point for dq.run"""
-    # Load fixtures
-    generator = FixtureGenerator()
+    """Main entry point"""
+    # Load fixtures (suppress bug planting messages)
+    generator = FixtureGenerator(verbose=False)
     fixtures = generator.generate()
     
     # Create fake backend with fixtures

@@ -17,7 +17,7 @@ class TestQualityEngine:
     @pytest.fixture
     def fixtures(self):
         """Generate fixture data for testing"""
-        generator = FixtureGenerator()
+        generator = FixtureGenerator(verbose=False)
         return generator.generate()
 
     @pytest.fixture
@@ -179,21 +179,46 @@ class TestQualityEngine:
 
     def test_warning_failure_does_not_halt(self, engine, table_configs):
         """Test a failing WARNING check does not halt execution"""
-        # Find a WARNING check and ensure it fails
-        warning_check = None
-        for tc in table_configs:
-            for check in tc.checks:
-                if check.enabled and check.config.get("severity") == "WARNING":
-                    warning_check = check
-                    break
-            if warning_check:
-                break
+        from dq.schema import TableConfig, Check, CheckType
+        from fixtures.generator import FixtureGenerator
         
-        if warning_check:
-            # Temporarily modify data to cause a WARNING failure
-            # For now, just verify that if only WARNINGs fail, should_halt is False
-            # This is tested by the fact that range checks are WARNING and should pass
-            pass
+        # Create a custom table config with a WARNING check that will fail
+        custom_config = TableConfig(
+            table_name="accounts",  # Use existing table
+            description="Test table",
+            tenant_column="organisation_id",
+            is_shared_reference=False,
+            checks=[
+                Check(
+                    name="test_warning_check",
+                    type=CheckType.NULL_CHECK,
+                    config={"column": "organisation_id", "severity": "WARNING"},
+                    severity=Severity.WARNING,
+                    description="Test WARNING check",
+                    enabled=True
+                )
+            ]
+        )
+        
+        # Create a backend that will return a violation for this check
+        class TestBackend(FakeBackend):
+            def count_null_values(self, table_name: str, column: str) -> int:
+                if table_name == "accounts" and column == "organisation_id":
+                    return 1  # Simulate a violation
+                return super().count_null_values(table_name, column)
+        
+        # Get fresh fixtures
+        generator = FixtureGenerator(verbose=False)
+        fixtures = generator.generate()
+        test_backend = TestBackend(fixtures)
+        test_engine = QualityEngine(test_backend)
+        
+        result = test_engine.run_checks([custom_config])
+        
+        # Should have 1 WARNING failure
+        assert result.warning_failures == 1, "Should have 1 WARNING failure"
+        assert result.error_failures == 0, "Should have 0 ERROR failures"
+        assert result.should_halt == False, "Should not halt on WARNING failure"
 
     def test_disabled_check_not_executed(self, engine, table_configs):
         """Test disabled checks are not executed"""
@@ -293,3 +318,71 @@ class TestQualityEngine:
         assert result.passed_checks + result.failed_checks == result.total_checks
         assert result.warning_failures + result.error_failures == result.failed_checks
         assert result.total_checks == sum(1 for tc in table_configs for check in tc.checks if check.enabled)
+
+
+class TestBackendContractTests:
+    """Contract tests with small hand-written datasets for backend methods"""
+
+    @pytest.fixture
+    def simple_backend(self):
+        """Create a backend with simple hand-written data"""
+        from fixtures.generator import Fixtures, Organisation, Account, Portfolio, Holding
+        from dq.backends.fake import FakeBackend
+        from datetime import datetime
+        
+        # Create simple fixtures with known data
+        fixtures = Fixtures()
+        
+        # Add simple test data using actual dataclasses
+        fixtures.organisations = [
+            Organisation(id='org1', name='Org1', created_at=datetime.now()),
+            Organisation(id='org2', name='Org2', created_at=datetime.now()),
+        ]
+        fixtures.accounts = [
+            Account(id='acc1', organisation_id='org1', advisor_id='adv1', account_number='001', account_type='Brokerage', balance=1000),
+            Account(id='acc2', organisation_id='org1', advisor_id='adv1', account_number='001', account_type='IRA', balance=2000),  # Duplicate account_number
+            Account(id='acc3', organisation_id='org1', advisor_id='adv1', account_number='002', account_type='IRA', balance=None),  # NULL balance
+        ]
+        fixtures.portfolios = [
+            Portfolio(id='prt1', organisation_id='org1', account_id='acc1', name='P1'),
+            Portfolio(id='prt2', organisation_id='org2', account_id='acc2', name='P2'),
+        ]
+        fixtures.holdings = [
+            Holding(id='hld1', organisation_id='org1', portfolio_id='prt1', security_id='sec1', quantity=10, avg_cost=100),
+            Holding(id='hld2', organisation_id='org1', portfolio_id='prt2', security_id='sec2', quantity=20, avg_cost=200),  # Cross-tenant: org1 holding references org2 portfolio
+        ]
+        
+        return FakeBackend(fixtures)
+
+    def test_contract_count_null_values(self, simple_backend):
+        """Contract test: count_null_values returns count of NULL values"""
+        # accounts has 1 NULL balance
+        count = simple_backend.count_null_values("accounts", "balance")
+        assert count == 1, "Should count exactly 1 NULL value"
+
+    def test_contract_count_duplicate_keys_global(self, simple_backend):
+        """Contract test: count_duplicate_keys counts duplicates globally"""
+        # accounts has duplicate account_number '001' (2 occurrences = 1 duplicate)
+        count = simple_backend.count_duplicate_keys("accounts", ["account_number"])
+        assert count == 1, "Should count 1 duplicate (2 occurrences - 1)"
+
+    def test_contract_count_duplicate_keys_grouped(self, simple_backend):
+        """Contract test: count_duplicate_keys counts duplicates within groups"""
+        # All accounts in same org, duplicate account_number should be counted
+        count = simple_backend.count_duplicate_keys("accounts", ["account_number"], group_by=["organisation_id"])
+        assert count == 1, "Should count 1 duplicate within group"
+
+    def test_contract_count_cross_tenant_violations(self, simple_backend):
+        """Contract test: count_cross_tenant_violations detects cross-tenant refs"""
+        # holdings.hld2 is in org1 but references prt2 which is in org2
+        count = simple_backend.count_cross_tenant_violations(
+            "holdings", "portfolio_id", "portfolios", "id", "organisation_id"
+        )
+        assert count == 1, "Should detect 1 cross-tenant violation"
+
+    def test_contract_count_range_violations(self, simple_backend):
+        """Contract test: count_range_violations counts values outside range"""
+        # Test with a range that excludes some values
+        count = simple_backend.count_range_violations("accounts", "balance", min_value=1500, max_value=1800)
+        # balance 1000 is below range, 2000 is above range, NULL is not counted
+        assert count == 2, "Should count 2 values outside range (NULL not counted)"
