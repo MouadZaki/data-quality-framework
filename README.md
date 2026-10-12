@@ -67,6 +67,15 @@ pytest tests/
 pytest tests/ --cov=dq --cov-report=html
 ```
 
+## Running Quality Checks
+
+```bash
+# Run quality checks on fixture data using the fake backend
+python -m dq
+```
+
+This loads the real configurations from `configs/`, runs all checks against the generated fixture data, and prints the results. The command exits with code 1 if any ERROR-level checks fail, and code 0 if only WARNING-level checks fail or all checks pass.
+
 ## Hard Rules
 
 1. **Counts only** - Quality checks return counts/totals only, never raw customer rows
