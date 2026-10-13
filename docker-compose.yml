@@ -2,15 +2,13 @@ version: '3.8'
 
 services:
   clickhouse:
-    image: clickhouse/clickhouse-server:latest
+    image: clickhouse/clickhouse-server:24.3
     container_name: dq-clickhouse
     ports:
       - "8123:8123"  # HTTP interface
       - "9000:9000"  # Native interface
     environment:
       CLICKHOUSE_DB: data_quality
-      CLICKHOUSE_USER: dq_user
-      CLICKHOUSE_PASSWORD: dq_password
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     volumes:
       - clickhouse_data:/var/lib/clickhouse

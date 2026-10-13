@@ -3,6 +3,7 @@ Unit tests for the dq.run runner module.
 Tests exit code behavior for ERROR vs WARNING failures.
 """
 
+import sys
 import pytest
 from fixtures.generator import FixtureGenerator
 from dq.backends.fake import FakeBackend
@@ -15,12 +16,19 @@ def test_runner_exits_non_zero_on_error_failures():
     """Test runner exits with code 1 when ERROR checks fail"""
     from dq.__main__ import main
     
-    # The runner loads real configs which have 3 ERROR bugs planted
-    # So it should exit with code 1
-    with pytest.raises(SystemExit) as exc_info:
-        main()
+    # Mock sys.argv to avoid pytest arguments interfering
+    original_argv = sys.argv
+    sys.argv = ['__main__.py', '--backend', 'fake']
     
-    assert exc_info.value.code == 1, "Should exit with code 1 on ERROR failures"
+    try:
+        # The runner loads real configs which have 3 ERROR bugs planted
+        # So it should exit with code 1
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        
+        assert exc_info.value.code == 1, "Should exit with code 1 on ERROR failures"
+    finally:
+        sys.argv = original_argv
 
 
 def test_runner_exits_zero_on_warning_only_failures():
