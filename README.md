@@ -69,12 +69,32 @@ pytest tests/ --cov=dq --cov-report=html
 
 ## Running Quality Checks
 
+### Using the Fake Backend (No Database Required)
+
 ```bash
 # Run quality checks on fixture data using the fake backend
 python -m dq
 ```
 
 This loads the real configurations from `configs/`, runs all checks against the generated fixture data, and prints the results. The command exits with code 1 if any ERROR-level checks fail, and code 0 if only WARNING-level checks fail or all checks pass.
+
+### Using ClickHouse Backend
+
+```bash
+# Start ClickHouse container
+docker-compose up -d
+
+# Generate CSV fixtures
+python fixtures/generator.py
+
+# Load fixtures into ClickHouse
+python scripts/load_clickhouse.py
+
+# Run quality checks against ClickHouse
+python -m dq --backend clickhouse
+```
+
+The ClickHouse backend runs the same checks against real data in ClickHouse and should detect the same 3 planted bugs with identical counts and exit code 1.
 
 ## Hard Rules
 
