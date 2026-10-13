@@ -96,6 +96,40 @@ python -m dq --backend clickhouse
 
 The ClickHouse backend runs the same checks against real data in ClickHouse and should detect the same 3 planted bugs with identical counts and exit code 1.
 
+### Auto-Generated Tenant Checks
+
+The framework can automatically generate tenant-related checks for tables that have a `tenant_column` defined. This includes:
+
+1. **Null checks** on the tenant column (e.g., `organisation_id`)
+2. **Cross-tenant checks** for foreign-key-style columns ending in `_id` that reference other tenant-owned tables
+
+#### Naming Convention for Foreign Key Inference
+
+Auto-generation uses a naming convention to infer referenced tables from column names:
+
+- Foreign key columns ending in `_id` map to tables by converting to plural:
+  - `portfolio_id` → `portfolios`
+  - `account_id` → `accounts`
+  - `advisor_id` → `advisors`
+  - `organisation_id` → `organisations`
+  - etc.
+
+#### Shared Reference Tables
+
+Shared reference tables (like `securities`) are excluded from auto-generation because they don't have a tenant column and are shared across all tenants.
+
+#### Running with Auto-Generation
+
+```bash
+# Run with auto-generation enabled (default)
+python -m dq
+
+# Run without auto-generation
+python -m dq --no-autogen
+```
+
+Auto-generated checks are prefixed with `auto_` in their names to distinguish them from hand-written checks in the output. If a hand-written check already covers the same column and type, no duplicate is generated.
+
 ## Hard Rules
 
 1. **Counts only** - Quality checks return counts/totals only, never raw customer rows

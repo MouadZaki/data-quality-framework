@@ -79,6 +79,21 @@ class DatabaseBackend(ABC):
         """Count values outside specified range"""
         pass
 
+    def get_table_columns(self, table_name: str) -> List[str]:
+        """
+        Get column names for a table.
+        
+        Returns only column names (metadata), never data values.
+        This is safe for the counts-only rule.
+        
+        Args:
+            table_name: Name of the table
+            
+        Returns:
+            List of column names
+        """
+        raise NotImplementedError("get_table_columns not implemented")
+
 
 class QualityEngine:
     """Data quality engine that executes checks through DB interface"""
