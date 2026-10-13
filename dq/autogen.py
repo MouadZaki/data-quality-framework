@@ -116,9 +116,7 @@ def get_table_columns_from_backend(backend: DatabaseBackend, table_name: str) ->
     """
     Get column names for a table from the backend.
     
-    This is a stub that should be implemented by each backend.
-    For FakeBackend, we can get it from the fixtures.
-    For ClickHouse, we'd query system.columns.
+    Uses the backend's get_table_columns method which returns only metadata.
     
     Args:
         backend: Database backend
@@ -127,17 +125,12 @@ def get_table_columns_from_backend(backend: DatabaseBackend, table_name: str) ->
     Returns:
         Set of column names
     """
-    # Try to get columns from backend if it has a method for it
-    if hasattr(backend, 'get_table_columns'):
-        return backend.get_table_columns(table_name)
-    
-    # For FakeBackend, we can infer from the fixtures data
-    if hasattr(backend, 'data') and table_name in backend.data:
-        if backend.data[table_name]:
-            return set(backend.data[table_name][0].keys())
-    
-    # Fallback: return empty set
-    return set()
+    try:
+        columns = backend.get_table_columns(table_name)
+        return set(columns)
+    except Exception:
+        # If backend doesn't support it or table doesn't exist, return empty set
+        return set()
 
 
 def generate_null_check(

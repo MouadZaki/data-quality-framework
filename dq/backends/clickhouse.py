@@ -49,6 +49,23 @@ class ClickHouseBackend(DatabaseBackend):
         self.database = database
         self._table_cache: Dict[str, Set[str]] = {}
 
+    def get_table_columns(self, table_name: str) -> List[str]:
+        """
+        Get column names for a table from system.columns.
+        
+        Returns only column names (metadata), never data values.
+        
+        Args:
+            table_name: Name of the table
+            
+        Returns:
+            List of column names
+            
+        Raises:
+            BackendError: If table doesn't exist
+        """
+        return list(self._get_table_columns(table_name))
+
     def _get_table_columns(self, table_name: str) -> Set[str]:
         """
         Get the set of column names for a table from system.columns.

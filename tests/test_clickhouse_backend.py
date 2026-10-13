@@ -9,6 +9,10 @@ import clickhouse_connect
 from clickhouse_connect.driver.exceptions import Error as ClickHouseError
 
 from dq.backends.clickhouse import ClickHouseBackend, BackendError
+from dq.autogen import generate_checks
+from dq.discovery import ConfigDiscovery
+from dq.engine import QualityEngine
+from dq.schema import Severity
 
 
 def is_clickhouse_running():
@@ -113,3 +117,34 @@ class TestClickHouseBackendContract:
             "holdings", "portfolio_id", "portfolios", "id", "organisation_id"
         ), int)
         assert isinstance(backend.count_range_violations("accounts", "balance", 0, 1000000), int)
+
+    def test_get_table_columns(self, backend):
+        """Test that get_table_columns returns column names"""
+        columns = backend.get_table_columns("accounts")
+        assert isinstance(columns, list)
+        assert len(columns) > 0
+        assert "id" in columns
+        assert "organisation_id" in columns
+        assert "account_number" in columns
+
+    def test_auto_generation_with_clickhouse(self, backend):
+        """Test that auto-generated checks run on ClickHouse and find 0 violations apart from planted bugs"""
+        # Load real configs
+        discovery = ConfigDiscovery()
+        table_configs = discovery.discover()
+        
+        # Apply auto-generation
+        table_configs = generate_checks(table_configs, backend)
+        
+        # Run engine
+        engine = QualityEngine(backend)
+        result = engine.run_checks(table_configs)
+        
+        # Should have exactly 3 ERROR failures (the planted bugs)
+        assert result.error_failures == 3
+        assert result.warning_failures == 0
+        
+        # Auto-generated checks should have 0 violations
+        auto_check_results = [r for r in result.check_results if r.check_name.startswith("auto_")]
+        for auto_result in auto_check_results:
+            assert auto_result.violation_count == 0, f"Auto-generated check {auto_result.check_name} should have 0 violations"

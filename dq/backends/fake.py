@@ -61,6 +61,27 @@ class FakeBackend(DatabaseBackend):
             raise BackendError(f"Unknown table: {table_name}")
         return len(self.data[table_name])
 
+    def get_table_columns(self, table_name: str) -> List[str]:
+        """
+        Get column names for a table.
+        
+        Returns only column names (metadata), never data values.
+        
+        Args:
+            table_name: Name of the table
+            
+        Returns:
+            List of column names
+            
+        Raises:
+            BackendError: If table does not exist
+        """
+        if table_name not in self.data:
+            raise BackendError(f"Unknown table: {table_name}")
+        if not self.data[table_name]:
+            return []
+        return list(self.data[table_name][0].keys())
+
     def count_null_values(self, table_name: str, column: str) -> int:
         """
         Count NULL values in a column.
