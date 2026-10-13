@@ -25,6 +25,7 @@ class FakeBackend(DatabaseBackend):
         Args:
             fixtures: Fixtures object from fixtures.generator
         """
+        self.fixtures = fixtures
         self.data = self._convert_fixtures_to_dict(fixtures)
 
     def _convert_fixtures_to_dict(self, fixtures) -> Dict[str, List[Dict]]:

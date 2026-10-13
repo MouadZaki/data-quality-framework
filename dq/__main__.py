@@ -9,6 +9,7 @@ from dq.discovery import ConfigDiscovery
 from dq.engine import QualityEngine
 from dq.backends.fake import FakeBackend
 from dq.backends.clickhouse import ClickHouseBackend
+from dq.autogen import generate_checks
 from fixtures.generator import FixtureGenerator
 
 
@@ -21,11 +22,12 @@ def main():
         default="fake",
         help="Backend to use: fake (in-memory) or clickhouse (database)"
     )
+    parser.add_argument(
+        "--no-autogen",
+        action="store_true",
+        help="Disable auto-generation of tenant checks"
+    )
     args = parser.parse_args()
-
-    # Load configs
-    discovery = ConfigDiscovery()
-    table_configs = discovery.discover()
 
     # Create backend based on choice
     if args.backend == "fake":
@@ -41,6 +43,14 @@ def main():
             password='',
             database='data_quality'
         )
+
+    # Load configs
+    discovery = ConfigDiscovery()
+    table_configs = discovery.discover()
+
+    # Apply auto-generation unless disabled
+    if not args.no_autogen:
+        table_configs = generate_checks(table_configs, backend)
 
     # Run engine
     engine = QualityEngine(backend)
