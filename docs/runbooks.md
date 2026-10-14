@@ -34,16 +34,20 @@ This means 1 row in the `contacts` table has a NULL `organisation_id`.
 - Database schema change allowing NULLs when it shouldn't
 
 **Step-by-step remediation:**
-1. Identify which rows have NULL values by querying the database directly (not through the quality framework):
+1. Identify which rows have NULL values by querying the database directly (not through the quality framework). Select only key columns to follow the counts-only rule:
    ```sql
-   SELECT * FROM contacts WHERE organisation_id IS NULL;
+   SELECT id, organisation_id FROM contacts WHERE organisation_id IS NULL LIMIT 10;
    ```
 2. Determine the correct value for each NULL row (e.g., from source data, business logic, or default value)
-3. Update the rows with the correct values:
+3. Update the rows with the correct values. In ClickHouse, use ALTER TABLE mutations (use carefully on large tables):
    ```sql
-   UPDATE contacts SET organisation_id = 'correct_value' WHERE id = 'row_id';
+   ALTER TABLE contacts UPDATE organisation_id = 'correct_value' WHERE id = 'row_id';
    ```
-4. If the column should never be NULL, consider adding a NOT NULL constraint to the database schema
+4. ClickHouse does not support enforced NOT NULL constraints. To prevent future NULLs:
+   - Fix the source data or ETL process
+   - Reload the data correctly
+   - Add validation in the data loader
+   - Use the quality framework's null_check to catch issues early
 5. Re-run the quality check to verify the fix
 
 ---
@@ -67,23 +71,30 @@ This means 1 duplicate `account_number` exists within an organisation.
 - Data migration creating duplicates
 
 **Step-by-step remediation:**
-1. Find the duplicate rows:
+1. Find the duplicate rows. Group by both the key column and organisation_id to see duplicates within each tenant:
    ```sql
-   SELECT account_number, COUNT(*) 
+   SELECT account_number, organisation_id, COUNT(*) 
    FROM accounts 
-   GROUP BY account_number 
+   GROUP BY account_number, organisation_id 
    HAVING COUNT(*) > 1;
    ```
-2. For each duplicate, determine which row is correct (e.g., based on creation date, last modified, or business rules)
-3. Delete or merge the duplicate rows:
+2. For each duplicate, determine which row is correct (e.g., based on creation date, last modified, or business rules). To identify specific rows, select only key columns:
    ```sql
-   DELETE FROM accounts WHERE id = 'duplicate_row_id';
+   SELECT id, account_number, organisation_id FROM accounts 
+   WHERE (account_number, organisation_id) IN (
+     SELECT account_number, organisation_id FROM accounts 
+     GROUP BY account_number, organisation_id HAVING COUNT(*) > 1
+   ) LIMIT 10;
    ```
-4. Add a unique constraint to the database to prevent future duplicates:
+3. Delete or merge the duplicate rows. In ClickHouse, use ALTER TABLE mutations (use carefully on large tables):
    ```sql
-   ALTER TABLE accounts ADD CONSTRAINT unique_account_number_per_org 
-   UNIQUE (account_number, organisation_id);
+   ALTER TABLE accounts DELETE WHERE id = 'duplicate_row_id';
    ```
+4. ClickHouse does not support enforced UNIQUE constraints. To prevent future duplicates:
+   - Fix the source data or application logic
+   - Reload the data correctly
+   - Add validation in the data loader
+   - Use the quality framework's unique_key check to catch issues early
 5. Re-run the quality check to verify the fix
 
 ---
@@ -107,25 +118,29 @@ This means 1 holding references a portfolio from a different organisation.
 - API endpoint not validating tenant ownership
 
 **Step-by-step remediation:**
-1. Find the violating rows:
+1. Find the violating rows. Select only key columns to follow the counts-only rule:
    ```sql
-   SELECT h.id, h.portfolio_id, h.organisation_id as holding_org, 
-          p.organisation_id as portfolio_org
+   SELECT h.id, h.portfolio_id, h.organisation_id AS holding_org, 
+          p.organisation_id AS portfolio_org
    FROM holdings h
    JOIN portfolios p ON h.portfolio_id = p.id
-   WHERE h.organisation_id != p.organisation_id;
+   WHERE h.organisation_id != p.organisation_id
+   LIMIT 10;
    ```
 2. For each violation, determine the correct tenant:
    - Should the holding belong to the portfolio's tenant?
    - Should the portfolio belong to the holding's tenant?
    - Is one of the rows completely wrong?
-3. Update the data to fix the tenant mismatch:
+3. Update the data to fix the tenant mismatch. In ClickHouse, use ALTER TABLE mutations (use carefully on large tables):
    ```sql
-   UPDATE holdings SET organisation_id = 'correct_tenant_id' WHERE id = 'holding_id';
+   ALTER TABLE holdings UPDATE organisation_id = 'correct_tenant_id' WHERE id = 'holding_id';
    ```
-4. Add database constraints to prevent future violations (e.g., foreign keys with tenant filtering)
-5. Review application code to ensure tenant validation on all writes
-6. Re-run the quality check to verify the fix
+4. ClickHouse does not support enforced foreign key constraints. To prevent future violations:
+   - Fix the source data or application logic
+   - Reload the data correctly
+   - Add validation in the data loader
+   - Review application code to ensure tenant validation on all writes
+5. Re-run the quality check to verify the fix
 
 ---
 
@@ -183,23 +198,24 @@ This means 2 rows have `rate` values outside the specified range.
 - Edge case not considered in range definition
 
 **Step-by-step remediation:**
-1. Find the violating rows:
+1. Find the violating rows. Select only key columns to follow the counts-only rule:
    ```sql
-   SELECT * FROM fee_schedules 
-   WHERE rate < 0 OR rate > 5;
+   SELECT id, organisation_id, rate FROM fee_schedules 
+   WHERE rate < 0 OR rate > 0.1
+   LIMIT 10;
    ```
 2. Determine the correct values:
    - Are these typos that should be fixed?
    - Are they legitimate edge cases that need the range updated?
 3. Fix the data or update the check config as appropriate
-4. If the range needs to change, update the YAML config:
+4. If the range needs to change, update the YAML config in `configs\fee_schedules.yaml`:
    ```yaml
    - name: fee_rate_range
      type: range_check
      config:
        column: rate
        min_value: 0
-       max_value: 10  # Updated range
+       max_value: 0.1  # 10% in decimal
        severity: WARNING
    ```
 5. Re-run the quality check to verify the fix
@@ -277,6 +293,15 @@ These checks are automatically generated by the framework for:
 python -m dq --no-autogen
 ```
 
+**Running against ClickHouse:** To run checks against the real ClickHouse database:
+```bash
+python -m dq --backend clickhouse
+```
+You can also disable auto-generation with ClickHouse:
+```bash
+python -m dq --backend clickhouse --no-autogen
+```
+
 ---
 
 ## The Counts-Only Rule
@@ -289,19 +314,20 @@ When you need to see the actual violating rows:
 
 1. **Connect directly to the database** (not through the quality framework)
 2. **Use appropriate access controls** - ensure you have permission to view the data
-3. **Query for the specific violations** based on the check type:
+3. **Query for the specific violations** based on the check type. Always select only key columns (id and tenant column) to follow the counts-only rule:
    ```sql
-   -- For null_check
-   SELECT * FROM table WHERE column IS NULL LIMIT 10;
+   -- For null_check (ClickHouse syntax)
+   SELECT id, organisation_id FROM table WHERE column IS NULL LIMIT 10;
    
-   -- For unique_key
-   SELECT column, COUNT(*) FROM table 
-   GROUP BY column HAVING COUNT(*) > 1;
+   -- For unique_key (group by key column and tenant column)
+   SELECT column, organisation_id, COUNT(*) FROM table 
+   GROUP BY column, organisation_id HAVING COUNT(*) > 1;
    
    -- For cross_tenant_check
    SELECT t1.id, t1.column, t1.organisation_id, t2.organisation_id
    FROM table t1 JOIN referenced_table t2 ON t1.column = t2.id
-   WHERE t1.organisation_id != t2.organisation_id;
+   WHERE t1.organisation_id != t2.organisation_id
+   LIMIT 10;
    ```
 4. **Never export the full result set** - use LIMIT and review only what you need
 5. **Never paste customer data into tickets, chats, or documentation**
@@ -340,17 +366,17 @@ Exit code: 0
 ```
 ✗ Found 3 validation error(s):
 
-File: configs/accounts.yml
+File: configs\accounts.yaml
   Table: accounts
   Check: account_check
   Error: Invalid check type: 'invalid_type'. Valid types: ['null_check', 'unique_key', 'cross_tenant_check', 'row_count_reconciliation', 'range_check']
 
-File: configs/holdings.yml
+File: configs\holdings.yaml
   Table: holdings
   Check: holding_check
   Error: cross_tenant_check references table 'portfolios' which is not defined in any config file
 
-File: configs/contacts.yml
+File: configs\contacts.yaml
   Table: contacts
   Check: null
   Error: Column 'nonexistent_column' does not exist in table 'contacts'
@@ -358,6 +384,12 @@ File: configs/contacts.yml
 Exit code: 1
 
 **In CI:** The validator runs before tests in the GitHub Actions workflow. This ensures configuration errors are caught early.
+
+**When CI fails on a pull request:**
+1. Check the CI logs to see which validation errors were reported
+2. Fix the configuration errors in your YAML files
+3. Run the validator locally to verify: `python -m dq.validate`
+4. Commit and push the fixes
 
 **Best practice:** Always run the validator after editing configs, and before committing changes.
 
@@ -391,6 +423,7 @@ Exit code: 1
 
 **For prevention:**
 1. Run validator before committing configs
-2. Add database constraints (NOT NULL, UNIQUE, FOREIGN KEY)
-3. Review application code for tenant validation
-4. Keep expected counts up to date
+2. Fix source data and application logic to prevent issues at the source
+3. Add validation in data loaders
+4. Review application code for tenant validation
+5. Keep expected counts up to date
