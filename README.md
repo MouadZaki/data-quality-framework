@@ -67,6 +67,37 @@ pytest tests/
 pytest tests/ --cov=dq --cov-report=html
 ```
 
+## Configuration Validation
+
+Before running quality checks, validate your YAML configuration files to catch errors early:
+
+```bash
+# Validate all configs in configs/
+python -m dq.validate
+```
+
+The validator checks for:
+- Invalid YAML syntax
+- Invalid check types
+- Missing required fields
+- Duplicate table or check names
+- Cross-tenant checks referencing nonexistent tables
+- Checks on columns that don't exist in the schema
+- Tenant-owned tables without a tenant column
+- Invalid row count expectations
+
+Exit code 0 indicates valid configs, exit code 1 indicates errors.
+
+## Continuous Integration
+
+The project uses GitHub Actions for CI. On every pull request and push to main, the workflow:
+1. Sets up Python 3.13
+2. Installs dependencies from requirements.txt
+3. Runs the configuration validator (`python -m dq.validate`)
+4. Runs the full test suite (`python -m pytest`)
+
+ClickHouse tests are automatically skipped in CI since no Docker service is needed for the unit tests. This ensures fast feedback on configuration errors and code changes without requiring a database.
+
 ## Running Quality Checks
 
 ### Using the Fake Backend (No Database Required)
