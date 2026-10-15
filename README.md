@@ -341,6 +341,11 @@ Cross-tenant checks compare the `organisation_id` of the referencing row with th
 
 All unit tests use the FakeBackend, which is an in-memory implementation. No Docker container, no ClickHouse, no external database is required. This makes tests fast (~15 seconds for 80+ tests), reliable, and CI-friendly.
 
+## Known issues
+
+- `python -m dq.demo --backend clickhouse`: step 5 (WARNING-only fee rate) reports a MISMATCH. The injected change uses `ALTER TABLE ... UPDATE`, a ClickHouse mutation that runs asynchronously, so the checks probably ran before it finished (suspected, not yet confirmed). Steps 0-4 pass on ClickHouse, and the fake-backend demo passes every step. The checks themselves are not affected.
+- The demo narration prints synthetic row IDs when it describes each injected corruption. The engine's own check results are counts-only.
+
 ## License
 
 MIT
