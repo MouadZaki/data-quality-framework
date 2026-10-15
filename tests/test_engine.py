@@ -36,6 +36,26 @@ class TestQualityEngine:
         discovery = ConfigDiscovery()
         return discovery.discover()
 
+    def test_clean_data_passes_all_checks(self):
+        """Test that clean data (no planted bugs) passes all checks with no failures"""
+        # Generate clean fixtures without planted bugs
+        generator = FixtureGenerator(verbose=False, plant_bugs=False)
+        clean_fixtures = generator.generate()
+        
+        # Create backend with clean data
+        backend = FakeBackend(clean_fixtures)
+        
+        # Load configs and run engine
+        discovery = ConfigDiscovery()
+        table_configs = discovery.discover()
+        engine = QualityEngine(backend)
+        result = engine.run_checks(table_configs)
+        
+        # All checks should pass with no failures
+        assert result.error_failures == 0
+        assert result.warning_failures == 0
+        assert result.total_checks > 0  # Should have checks running
+
     def test_backend_row_count(self, backend, fixtures):
         """Test backend returns correct row counts"""
         assert backend.get_row_count("organisations") == len(fixtures.organisations)

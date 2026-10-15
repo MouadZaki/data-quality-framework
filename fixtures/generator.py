@@ -145,11 +145,12 @@ class Fixtures:
 class FixtureGenerator:
     """Generates fixture data with planted bugs"""
 
-    def __init__(self, seed: int = 42, verbose: bool = True):
+    def __init__(self, seed: int = 42, verbose: bool = True, plant_bugs: bool = True):
         random.seed(seed)
         self.fixtures = Fixtures()
         self.org_ids: List[str] = []
         self.verbose = verbose
+        self.plant_bugs = plant_bugs
 
     def generate(self) -> Fixtures:
         """Generate all fixture data"""
@@ -324,6 +325,9 @@ class FixtureGenerator:
 
     def _plant_bugs(self) -> None:
         """Plant 3 bugs in the fixture data"""
+        if not self.plant_bugs:
+            return
+
         # Bug #1: NULL organisation_id in one contact row
         # We'll set organisation_id to None for one contact
         if self.fixtures.contacts:

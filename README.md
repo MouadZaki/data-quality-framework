@@ -11,6 +11,43 @@ This framework provides:
 - **ERROR vs WARNING severity** to control pipeline halting behavior
 - **Auto-generated tenant checks** for cross-tenant collision detection
 
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     User Commands                           │
+│  python -m dq (checks)  │  python -m dq.validate (config)  │
+│  python -m dq.demo     │  python -m pytest (tests)         │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    dq/ (Core Engine)                         │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │  discovery   │  │   engine     │  │   autogen    │     │
+│  │  (YAML →    │→ │  (runs       │→ │  (generates  │     │
+│  │   configs)   │  │   checks)    │  │   checks)    │     │
+│  └──────────────┘  └──────────────┘  └──────────────┘     │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 dq/backends/ (DB Interface)                  │
+│  ┌──────────────┐              ┌──────────────┐             │
+│  │ FakeBackend  │              │ClickHouse    │             │
+│  │ (in-memory   │              │Backend       │             │
+│  │  for tests)  │              │(production)  │             │
+│  └──────────────┘              └──────────────┘             │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Data Sources                              │
+│  fixtures/generator.py  │  ClickHouse database               │
+│  (10 tables, 3 bugs)   │  (real production data)           │
+└─────────────────────────────────────────────────────────────┘
+```
+
 ## Project Structure
 
 ```
@@ -21,9 +58,13 @@ dq/
   engine.py         Runs checks through the DB interface
   backends/         Fake (unit tests) + ClickHouse backends
   autogen.py        Auto-generated default tenant checks
+  validate.py       Configuration validator CLI
+  demo.py           Demo script for walkthrough
 fixtures/           Data generator + PLANTED_BUGS.md
 tests/              Unit tests (no database needed)
-docs/runbooks.md    Failure definitions + remediation steps
+docs/
+  runbooks.md       Failure definitions + remediation steps
+  DEMO.md           Video script and talking points
 ```
 
 ## Supported Checks
@@ -36,13 +77,44 @@ docs/runbooks.md    Failure definitions + remediation steps
 
 ## Installation
 
-```bash
+### Windows Quick Start
+
+```powershell
 # Create virtual environment
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+.venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
+
+# Run tests (no database needed)
+python -m pytest tests/ -v
+
+# Run demo
+python -m dq.demo
+
+# Run quality checks on fixture data
+python -m dq
+```
+
+### Linux/Mac Quick Start
+
+```bash
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run tests (no database needed)
+python -m pytest tests/ -v
+
+# Run demo
+python -m dq.demo
+
+# Run quality checks on fixture data
+python -m dq
 ```
 
 ## Development Phases
@@ -161,20 +233,118 @@ python -m dq --no-autogen
 
 Auto-generated checks are prefixed with `auto_` in their names to distinguish them from hand-written checks in the output. If a hand-written check already covers the same column and type, no duplicate is generated.
 
-## Hard Rules
+## Running Tools
 
-1. **Counts only** - Quality checks return counts/totals only, never raw customer rows
-2. **Database-agnostic** - Engine talks to a DB interface; unit tests use fake in-memory backend
-3. **ERROR vs WARNING** - Failed ERROR checks halt the run; WARNING checks only log alerts
-4. **Build from scratch** - No dependence on existing codebases; Python 3.11+
-5. **One phase at a time** - Complete each phase before moving to the next
-6. **Git workflow** - One branch per phase, small clear commits, PRs to main
+### Quality Checks
+
+```bash
+# Fake backend (no database)
+python -m dq
+
+# ClickHouse backend
+docker-compose up -d
+python -m dq --backend clickhouse
+
+# Without auto-generation
+python -m dq --no-autogen
+python -m dq --backend clickhouse --no-autogen
+```
+
+### Configuration Validator
+
+```bash
+# Validate all configs
+python -m dq.validate
+
+# Validate specific directory
+python -m dq.validate --configs-dir path/to/configs
+```
+
+### Demo Script
+
+```bash
+# Fake backend demo (no Docker needed)
+python -m dq.demo
+
+# With pause between steps (for video recording)
+python -m dq.demo --pause
+
+# ClickHouse demo
+docker-compose up -d
+python -m dq.demo --backend clickhouse
+```
+
+### Tests
+
+```bash
+# Run all tests (no database needed)
+python -m pytest tests/ -v
+
+# Run with coverage
+python -m pytest tests/ --cov=dq --cov-report=html
+
+# Run specific test file
+python -m pytest tests/test_engine.py -v
+```
+
+## Acceptance Criteria Mapping
+
+| Criterion | Proof |
+|-----------|-------|
+| Unit tests run without database connection | `pytest tests/` - all 80+ tests pass using FakeBackend (in-memory) |
+| Engine catches corrupt records | `tests/test_engine.py::test_backend_count_null_values` - detects 1 NULL org_id |
+| Engine catches duplicate keys | `tests/test_engine.py::test_backend_count_duplicate_keys` - detects 1 duplicate account_number |
+| Engine catches cross-tenant collisions | `tests/test_engine.py::test_backend_count_cross_tenant_violations` - detects 1 cross-tenant leak |
+| Counts-only validation (no PII in logs) | `tests/test_counts_only.py::test_demo_output_counts_only` - asserts no fixture IDs/values in output |
+| ERROR vs WARNING severity | `tests/test_runner.py` - runner exits 1 on ERROR, 0 on WARNING only |
+| Auto-generated tenant checks | `tests/test_autogen.py` - verifies auto-generated checks for tenant columns |
+| Configuration validator | `tests/test_validator.py` - 21 tests covering all validation rules |
+| ClickHouse backend support | `tests/test_clickhouse_backend.py` - contract tests for ClickHouse backend |
+| Demo walkthrough | `python -m dq.demo` - 6-step demo showing each check type catching corruption |
+| CI workflow | `.github/workflows/ci.yml` - GitHub Actions runs validator and pytest on PR/push |
+
+## Limitations and Next Steps
+
+### Current Limitations
+
+1. **ClickHouse constraint support**: ClickHouse does not support enforced NOT NULL, UNIQUE, or FOREIGN KEY constraints. The framework relies on the quality checks to catch violations rather than database constraints.
+
+2. **Mutation performance**: ClickHouse UPDATE/DELETE operations are mutations that can be slow on large tables. The runbooks recommend fixing source data and reloading rather than relying on mutations for remediation.
+
+3. **Single-tenant fixture data**: The fixture generator only creates 3 organisations. For production use, you may need to scale up the test data to validate performance with more tenants.
+
+4. **No parallel check execution**: Checks run sequentially. For large datasets, this could be slow. Future work could add parallel execution.
+
+5. **No check scheduling**: Checks run on-demand. There's no built-in scheduling for periodic runs (e.g., daily checks). This would need to be added via external schedulers (cron, Airflow, etc.).
+
+### Next Steps
+
+1. **Add more check types**: Consider adding checks for referential integrity, data type validation, custom business rules, and anomaly detection.
+
+2. **Parallel execution**: Implement parallel check execution for better performance on large datasets.
+
+3. **Check scheduling**: Add built-in scheduling or integrate with external schedulers for periodic quality checks.
+
+4. **Alerting integration**: Add integration with alerting systems (PagerDuty, Slack, email) for ERROR-level failures.
+
+5. **Historical tracking**: Add database tables to store check results over time for trend analysis and reporting.
+
+6. **Web UI**: Build a web interface for viewing check results, trends, and remediation guidance.
 
 ## Important Notes
 
 ### Cross-Tenant Checks and NULL Values
 
 Cross-tenant checks compare the `organisation_id` of the referencing row with the `organisation_id` of the referenced row to detect data crossing tenant boundaries. If the referencing row has a NULL `organisation_id`, the cross-tenant check cannot perform the comparison and does not count it as a cross-tenant violation. Instead, NULL `organisation_id` values are caught by separate `null_check` configurations. This ensures that the "exactly 3 violations" in the fixture data (1 NULL org_id, 1 duplicate key, 1 cross-tenant reference) are unambiguous and each violation type is detected by its appropriate check.
+
+### Unit Tests Without Database Connection
+
+All unit tests use the FakeBackend, which is an in-memory implementation. No Docker container, no ClickHouse, no external database is required. This makes tests fast (~15 seconds for 80+ tests), reliable, and CI-friendly.
+
+## Known issues
+
+- `python -m dq.demo --backend clickhouse`: step 5 (WARNING-only fee rate) reports a MISMATCH. The injected change uses `ALTER TABLE ... UPDATE`, a ClickHouse mutation that runs asynchronously, so the checks probably ran before it finished (suspected, not yet confirmed). Steps 0-4 pass on ClickHouse, and the fake-backend demo passes every step. The checks themselves are not affected.
+- The demo narration prints synthetic row IDs when it describes each injected corruption. The engine's own check results are counts-only.
 
 ## License
 
